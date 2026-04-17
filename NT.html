@@ -6,6 +6,16 @@
   <title>New Tab</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
+    :root {
+      /* Dark sea-blue theme colors from previous request */
+      --bg: #020b12;              
+      --surface: #05131c;         
+      --surface-hover: #0a1f2b;   
+      --border: #0d2533;          
+      --text: #ffffff;
+      --text-muted: rgba(255, 255, 255, 0.6);
+    }
+
     * {
       box-sizing: border-box;
       margin: 0;
@@ -14,8 +24,8 @@
 
     body {
       font-family: 'Inter', system-ui, sans-serif;
-      background: #0a0a0a;
-      color: #e4e4e7;
+      background: var(--bg);
+      color: var(--text);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
@@ -29,12 +39,12 @@
       font-weight: 600;
       letter-spacing: -2px;
       margin-bottom: 8px;
-      color: #ffffff;
+      color: var(--text);
     }
 
     .date {
       font-size: 14px;
-      color: #71717a;
+      color: var(--text-muted);
       margin-bottom: 32px;
     }
 
@@ -42,8 +52,8 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      background: #0f0f0f;
-      border: 1px solid #1f1f1f;
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 12px;
       padding: 12px 16px;
       width: 100%;
@@ -52,7 +62,7 @@
     }
 
     .search-box i {
-      color: #71717a;
+      color: var(--text-muted);
       font-size: 14px;
     }
 
@@ -61,20 +71,20 @@
       background: transparent;
       border: none;
       outline: none;
-      color: #e4e4e7;
+      color: var(--text);
       font-size: 14px;
       font-family: inherit;
     }
 
     .search-box input::placeholder {
-      color: #52525b;
+      color: var(--text-muted);
     }
 
     .search-box select {
-      background: #1a1a1a;
+      background: var(--surface-hover);
       border: none;
       border-radius: 6px;
-      color: #71717a;
+      color: var(--text-muted);
       padding: 6px 10px;
       font-size: 12px;
       cursor: pointer;
@@ -101,8 +111,8 @@
     .shortcut-icon {
       width: 52px;
       height: 52px;
-      background: #0f0f0f;
-      border: 1px solid #1f1f1f;
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 12px;
       display: flex;
       align-items: center;
@@ -111,24 +121,25 @@
     }
 
     .shortcut:hover .shortcut-icon {
-      background: #1a1a1a;
+      background: var(--surface-hover);
       transform: translateY(-2px);
     }
 
     .shortcut-icon img {
       width: 22px;
       height: 22px;
-      filter: brightness(0) invert(0.7);
+      /* Inverts standard black icons to white */
+      filter: brightness(0) invert(1); 
     }
 
     .shortcut-icon i {
       font-size: 20px;
-      color: #71717a;
+      color: var(--text-muted);
     }
 
     .shortcut-label {
       font-size: 11px;
-      color: #71717a;
+      color: var(--text-muted);
       text-align: center;
       max-width: 60px;
       overflow: hidden;
@@ -137,14 +148,14 @@
     }
 
     .shortcut:hover .shortcut-label {
-      color: #e4e4e7;
+      color: var(--text);
     }
 
     .quote {
       position: fixed;
       bottom: 24px;
       font-size: 13px;
-      color: #52525b;
+      color: var(--text-muted);
       max-width: 400px;
       text-align: center;
     }
@@ -152,7 +163,7 @@
     .loader {
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.9);
+      background: var(--bg);
       display: none;
       align-items: center;
       justify-content: center;
@@ -166,8 +177,8 @@
     .spinner {
       width: 32px;
       height: 32px;
-      border: 2px solid #1f1f1f;
-      border-top-color: #ffffff;
+      border: 2px solid var(--border);
+      border-top-color: var(--text);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
     }
@@ -185,7 +196,7 @@
     <div class="spinner"></div>
   </div>
 
-  <div id="clock">Sea Bean</div>
+  <div class="clock" id="clock">Sea Bean</div>
   <div class="date" id="date"></div>
 
   <form class="search-box" id="searchForm">
@@ -257,14 +268,14 @@
       window.parent?.postMessage({ type: 'navigate', url }, '*');
     };
 
-    // Clock
-    function updateClock() {
+    // Date (Time text is now hardcoded to "Sea Bean")
+    function updateDate() {
       const now = new Date();
-      $('#clock').textContent = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
       $('#date').textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     }
-    updateClock();
-    setInterval(updateClock, 1000);
+    updateDate();
+    // Only updating date now, so checking every 1000ms is optional but fine to keep
+    setInterval(updateDate, 60000);
 
     // Search
     $('#searchForm').onsubmit = e => {
@@ -327,7 +338,7 @@
     "TEACHERR!",
     "lebron lebron lebronn james",
     "lebron is OUR goat"
-];
+    ];
     $('#quote').textContent = quotes[Math.floor(Math.random() * quotes.length)];
 
     renderCustom();

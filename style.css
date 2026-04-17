@@ -11,9 +11,9 @@
 }
 
     /* Text */
-    --text: #e4e4e7;
-    --text-muted: #71717a;
-    --text-dim: #52525b;
+    --text: #ffffff;
+    --text-muted: #ffffff;
+    --text-dim: #ffffff;
 
     /* Accent (customizable) */
     --accent: #ffffff;

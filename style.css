@@ -1,5 +1,6 @@
 /* Browser Styles */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
 :root {
     /* Dark sea-blue theme */
     --bg: #020b12;              /* almost black ocean depth */
@@ -8,9 +9,8 @@
     --surface-active: #0f2a3a;  /* active state glow */
     --border: #0d2533;          /* subtle blue border */
     --border-light: #16394d;    /* lighter edge highlight */
-}
 
-    /* Text */
+    /* Text & Icons (All set to white) */
     --text: #ffffff;
     --text-muted: #ffffff;
     --text-dim: #ffffff;
@@ -377,8 +377,6 @@ input.bar::placeholder {
     color: var(--text);
 }
 
-
-
 /* Spinner */
 .tab-spinner {
     width: 14px;
@@ -575,7 +573,7 @@ input.bar::placeholder {
     background: var(--accent);
     border: none;
     border-radius: 6px;
-    color: #fff;
+    color: var(--text);
     cursor: pointer;
     transition: opacity 0.15s;
 }

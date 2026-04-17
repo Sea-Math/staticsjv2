@@ -1,14 +1,14 @@
 /* Browser Styles */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-
 :root {
-    /* Core colors (can be overridden by user settings) */
-    --bg: #0a0a0a;
-    --surface: #0f0f0f;
-    --surface-hover: #1a1a1a;
-    --surface-active: #252525;
-    --border: #1f1f1f;
-    --border-light: #2a2a2a;
+    /* Dark sea-blue theme */
+    --bg: #020b12;              /* almost black ocean depth */
+    --surface: #05131c;         /* deep sea layer */
+    --surface-hover: #0a1f2b;   /* slightly lighter blue */
+    --surface-active: #0f2a3a;  /* active state glow */
+    --border: #0d2533;          /* subtle blue border */
+    --border-light: #16394d;    /* lighter edge highlight */
+}
 
     /* Text */
     --text: #e4e4e7;

@@ -3,10 +3,142 @@
 // =====================================================
 const DEFAULT_WISP = window.SITE_CONFIG?.defaultWisp ?? "wss://military.marincareers.org/wisp/";
 const WISP_SERVERS = [{ name: "Default Wisp", url: "wss://military.marincareers.org/wisp/" }];
+const BOOT_TIMEOUT_MS = 8000;
+const SCRAMJET_SCRIPT_URLS = [
+    "https://cdn.jsdelivr.net/gh/Destroyed12121/Staticsj@main/JS/scramjet.all.js",
+    "https://fastly.jsdelivr.net/gh/Destroyed12121/Staticsj@main/JS/scramjet.all.js"
+];
+const BARE_MUX_IMPORT_URLS = [
+    "./vendor/bare-mux/index.mjs",
+    "https://cdn.jsdelivr.net/npm/@mercuryworkshop/bare-mux/dist/index.mjs",
+    "https://unpkg.com/@mercuryworkshop/bare-mux/dist/index.mjs",
+    "https://esm.sh/@mercuryworkshop/bare-mux"
+];
 
-if (!localStorage.getItem("proxServer")) {
-    localStorage.setItem("proxServer", DEFAULT_WISP);
+const memoryStorage = {};
+function storageGetItem(key) {
+    try {
+        const value = localStorage.getItem(key);
+        return value ?? memoryStorage[key] ?? null;
+    } catch {
+        return memoryStorage[key] ?? null;
+    }
 }
+
+function storageSetItem(key, value) {
+    memoryStorage[key] = value;
+    try {
+        localStorage.setItem(key, value);
+    } catch {}
+}
+
+if (!storageGetItem("proxServer")) {
+    storageSetItem("proxServer", DEFAULT_WISP);
+}
+
+function showFatalBootError(message, detail = "") {
+    const root = document.getElementById("app");
+    if (!root) return;
+    root.innerHTML = `
+        <div class="message-container" style="display:flex; position:fixed; inset:0;">
+            <div class="message-content">
+                <h1><i class="fa-solid fa-triangle-exclamation"></i> Startup Error</h1>
+                <p>${message}</p>
+                ${detail ? `<p style="margin-top:8px;word-break:break-word;opacity:.85;">${detail}</p>` : ""}
+                <button onclick="location.reload()" style="margin-top:12px;padding:8px 14px;cursor:pointer;">Reload</button>
+            </div>
+        </div>`;
+}
+
+function initializeFallbackBrowser(reason = "") {
+    const root = document.getElementById("app");
+    if (!root) return;
+    root.innerHTML = `
+        <div class="browser-container">
+            <div class="flex nav" style="padding:12px; gap:8px;">
+                <input class="bar" id="fallback-address" autocomplete="off" placeholder="Enter URL or search query">
+                <button id="fallback-go" title="Go"><i class="fa-solid fa-arrow-right"></i></button>
+                <button id="fallback-open" title="Open in new tab"><i class="fa-solid fa-up-right-from-square"></i></button>
+            </div>
+            <div class="iframe-container" style="position:relative;">
+                <div class="message-container" style="display:flex; position:absolute; inset:0; z-index:2; background:rgba(2,11,18,.92);" id="fallback-banner">
+                    <div class="message-content">
+                        <h1><i class="fa-solid fa-shield"></i> Fallback Mode</h1>
+                        <p>Proxy scripts were blocked, so direct browsing mode was loaded to avoid a blank screen.</p>
+                        ${reason ? `<p style="opacity:.85; margin-top:8px;">${reason}</p>` : ""}
+                        <button id="dismiss-fallback" style="margin-top:12px;padding:8px 14px;cursor:pointer;">Continue</button>
+                    </div>
+                </div>
+                <iframe id="fallback-frame" src="NT.html" style="position:absolute; inset:0; width:100%; height:100%; border:none;"></iframe>
+            </div>
+        </div>`;
+
+    const parseInput = (raw) => {
+        const input = (raw || "").trim();
+        if (!input) return "";
+        if (/^https?:\/\//i.test(input)) return input;
+        return (input.includes('.') && !input.includes(' '))
+            ? `https://${input}`
+            : `https://search.brave.com/search?q=${encodeURIComponent(input)}`;
+    };
+
+    const run = () => {
+        const value = parseInput(document.getElementById("fallback-address").value);
+        if (!value) return;
+        document.getElementById("fallback-frame").src = value;
+    };
+
+    document.getElementById("fallback-go").onclick = run;
+    document.getElementById("fallback-open").onclick = () => {
+        const value = parseInput(document.getElementById("fallback-address").value);
+        if (value) window.open(value, "_blank", "noopener,noreferrer");
+    };
+    document.getElementById("fallback-address").onkeyup = (e) => e.key === "Enter" && run();
+    document.getElementById("dismiss-fallback").onclick = () => {
+        const banner = document.getElementById("fallback-banner");
+        if (banner) banner.remove();
+    };
+}
+
+async function loadExternalScript(urls) {
+    for (const url of urls) {
+        try {
+            await new Promise((resolve, reject) => {
+                const script = document.createElement("script");
+                script.src = url;
+                script.async = true;
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+            return true;
+        } catch {}
+    }
+    return false;
+}
+
+async function ensureBareMuxLoaded() {
+    if (window.BareMux?.BareMuxConnection) return window.BareMux;
+    for (const url of BARE_MUX_IMPORT_URLS) {
+        try {
+            const mod = await import(url);
+            if (mod?.BareMuxConnection) {
+                window.BareMux = mod;
+                return mod;
+            }
+        } catch {}
+    }
+    return null;
+}
+
+window.addEventListener('error', (event) => {
+    showFatalBootError("Something crashed while starting the browser.", event?.error?.message || event?.message || "");
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+    const reason = event?.reason?.message || String(event?.reason || "");
+    showFatalBootError("A startup task failed before the page could load.", reason);
+});
 
 function getAllWispServers() {
     const customWisps = getStoredWisps();
@@ -39,18 +171,18 @@ async function findBestWispServer(servers, currentUrl) {
 }
 
 async function initializeWithBestServer() {
-    const autoswitch = localStorage.getItem('wispAutoswitch') !== 'false';
+    const autoswitch = storageGetItem('wispAutoswitch') !== 'false';
     const allServers = getAllWispServers();
     if (!autoswitch || allServers.length <= 1) return;
 
-    const currentUrl = localStorage.getItem("proxServer") || DEFAULT_WISP;
+    const currentUrl = storageGetItem("proxServer") || DEFAULT_WISP;
     const currentCheck = await pingWispServer(currentUrl, 2000);
     
     if (!currentCheck.success) {
         console.log("Current server dead. Finding best server...");
         const best = await findBestWispServer(allServers, currentUrl);
         if (best && best !== currentUrl) {
-            localStorage.setItem("proxServer", best);
+            storageSetItem("proxServer", best);
             notify('info', 'Auto-switched', 'Switched to a faster proxy server.');
         }
     }
@@ -59,7 +191,7 @@ async function initializeWithBestServer() {
 // =====================================================
 // BROWSER STATE
 // =====================================================
-const BareMux = window.BareMux ?? { BareMuxConnection: class { setTransport() {} } };
+let BareMux = window.BareMux ?? null;
 let sharedScramjet = null;
 let sharedConnection = null;
 let sharedConnectionReady = false;
@@ -71,15 +203,22 @@ const getBasePath = () => {
     const basePath = location.pathname.replace(/[^/]*$/, '');
     return basePath.endsWith('/') ? basePath : basePath + '/';
 };
-const getStoredWisps = () => { try { return JSON.parse(localStorage.getItem('customWisps') ?? '[]'); } catch { return []; } };
+const getStoredWisps = () => { try { return JSON.parse(storageGetItem('customWisps') ?? '[]'); } catch { return []; } };
 const getActiveTab = () => tabs.find(t => t.id === activeTabId);
 const notify = (type, title, message) => { if (typeof Notify !== 'undefined') Notify[type](title, message); };
+const isNewTabUrl = (url = "") => url.includes("NT.html");
 
 // =====================================================
 // INITIALIZATION (With Auto-Nuke for Corruption)
 // =====================================================
 async function getSharedScramjet() {
     if (sharedScramjet) return sharedScramjet;
+    if (typeof $scramjetLoadController !== 'function') {
+        await loadExternalScript(SCRAMJET_SCRIPT_URLS);
+    }
+    if (typeof $scramjetLoadController !== 'function') {
+        throw new Error("Scramjet loader script was blocked or did not load.");
+    }
     const { ScramjetController } = $scramjetLoadController();
     
     sharedScramjet = new ScramjetController({
@@ -106,7 +245,9 @@ async function getSharedScramjet() {
 
 async function getSharedConnection() {
     if (sharedConnectionReady) return sharedConnection;
-    const wispUrl = localStorage.getItem("proxServer") ?? DEFAULT_WISP;
+    BareMux = await ensureBareMuxLoaded();
+    if (!BareMux?.BareMuxConnection) throw new Error("BareMux script was blocked or did not load.");
+    const wispUrl = storageGetItem("proxServer") ?? DEFAULT_WISP;
     sharedConnection = new BareMux.BareMuxConnection(getBasePath() + "bareworker.js");
     
     await sharedConnection.setTransport(
@@ -234,7 +375,7 @@ function createTab(makeActive = true) {
         // Kill Switch: If it takes longer than 15 seconds, assume proxy failure.
         clearTimeout(tab.timeoutTracker);
         tab.timeoutTracker = setTimeout(() => {
-            if (tab.loading && tab.id === activeTabId && tab.url && !tab.url.includes('NT.html')) {
+            if (tab.loading && tab.id === activeTabId && tab.url && !isNewTabUrl(tab.url)) {
                 showIframeLoading(false);
                 document.getElementById("error").style.display = "flex";
                 document.getElementById("error-message").textContent = "Connection Timed Out. The server took too long to respond.";
@@ -254,7 +395,7 @@ function createTab(makeActive = true) {
         let isBlank = false;
         try {
             const frameDoc = frame.frame.contentDocument || frame.frame.contentWindow.document;
-            if (frameDoc && frameDoc.body && frameDoc.body.innerHTML.trim() === "" && tab.url && !tab.url.includes('NT.html')) {
+            if (frameDoc && frameDoc.body && frameDoc.body.innerHTML.trim() === "" && tab.url && !isNewTabUrl(tab.url)) {
                 isBlank = true;
             }
         } catch (e) {
@@ -272,7 +413,7 @@ function createTab(makeActive = true) {
 
         try { const title = frame.frame.contentWindow.document.title; if (title) tab.title = title; } catch {}
 
-        if (frame.frame.contentWindow.location.href.includes('NT.html')) {
+        if (isNewTabUrl(frame.frame.contentWindow.location.href)) {
             tab.title = "New Tab"; tab.url = ""; tab.favicon = null;
         }
 
@@ -347,7 +488,7 @@ function updateTabsUI() {
 function updateAddressBar() {
     const bar = document.getElementById("address-bar");
     const tab = getActiveTab();
-    if (bar && tab) bar.value = (tab.url && !tab.url.includes("NT.html")) ? tab.url : "";
+    if (bar && tab) bar.value = (tab.url && !isNewTabUrl(tab.url)) ? tab.url : "";
 }
 
 async function handleSubmit(url) {
@@ -391,7 +532,7 @@ function openSettings() {
 function renderServerList() {
     const list = document.getElementById('server-list');
     list.innerHTML = '';
-    const currentUrl = localStorage.getItem('proxServer') ?? DEFAULT_WISP;
+    const currentUrl = storageGetItem('proxServer') ?? DEFAULT_WISP;
     const allWisps = [...WISP_SERVERS, ...getStoredWisps()];
 
     allWisps.forEach((server, index) => {
@@ -412,14 +553,14 @@ function renderServerList() {
         checkServerHealth(server.url, item);
     });
 
-    const isAutoswitch = localStorage.getItem('wispAutoswitch') !== 'false';
+    const isAutoswitch = storageGetItem('wispAutoswitch') !== 'false';
     const toggleContainer = document.createElement('div');
     toggleContainer.className = 'wisp-option';
     toggleContainer.style.cssText = 'margin-top: 10px; cursor: default;';
     toggleContainer.innerHTML = `<div class="wisp-option-header" style="justify-content: space-between;"><div class="wisp-option-name"><i class="fa-solid fa-rotate" style="margin-right:8px"></i> Auto-switch on failure</div><div class="toggle-switch ${isAutoswitch ? 'active' : ''}" id="autoswitch-toggle"><div class="toggle-knob"></div></div></div>`;
     toggleContainer.onclick = () => {
         const newState = !isAutoswitch;
-        localStorage.setItem('wispAutoswitch', newState);
+        storageSetItem('wispAutoswitch', String(newState));
         document.getElementById('autoswitch-toggle').classList.toggle('active', newState);
         navigator.serviceWorker.controller?.postMessage({ type: 'config', autoswitch: newState });
     };
@@ -436,15 +577,15 @@ function saveCustomWisp() {
     if (customWisps.some(w => w.url === url) || WISP_SERVERS.some(w => w.url === url)) return notify('warning', 'Already Exists', 'Server already exists.');
     
     customWisps.push({ name: `Custom ${customWisps.length + 1}`, url });
-    localStorage.setItem('customWisps', JSON.stringify(customWisps));
+    storageSetItem('customWisps', JSON.stringify(customWisps));
     setWisp(url);
     input.value = '';
 }
 
 window.deleteCustomWisp = function (urlToDelete) {
     if (!confirm("Remove this server?")) return;
-    localStorage.setItem('customWisps', JSON.stringify(getStoredWisps().filter(w => w.url !== urlToDelete)));
-    if (localStorage.getItem('proxServer') === urlToDelete) setWisp(DEFAULT_WISP); else renderServerList();
+    storageSetItem('customWisps', JSON.stringify(getStoredWisps().filter(w => w.url !== urlToDelete)));
+    if (storageGetItem('proxServer') === urlToDelete) setWisp(DEFAULT_WISP); else renderServerList();
 };
 
 async function checkServerHealth(url, element) {
@@ -461,7 +602,7 @@ async function checkServerHealth(url, element) {
 }
 
 function setWisp(url) {
-    localStorage.setItem('proxServer', url);
+    storageSetItem('proxServer', url);
     navigator.serviceWorker.controller?.postMessage({ type: 'config', wispurl: url });
     setTimeout(() => location.reload(), 600);
 }
@@ -480,6 +621,13 @@ function toggleDevTools() {
 // MASTER BOOT SEQUENCE
 // =====================================================
 document.addEventListener('DOMContentLoaded', async function () {
+    let bootFinished = false;
+    const bootWatchdog = setTimeout(() => {
+        if (!bootFinished) {
+            showFatalBootError("Startup timed out. Your network/account may be blocking required scripts.", "If this is a school-managed device, ask for access to jsdelivr.net and cdnjs.cloudflare.com.");
+        }
+    }, BOOT_TIMEOUT_MS);
+
     try {
         await initializeWithBestServer();
         await getSharedScramjet();
@@ -491,9 +639,9 @@ document.addEventListener('DOMContentLoaded', async function () {
             
             const swConfig = {
                 type: "config",
-                wispurl: localStorage.getItem("proxServer") ?? DEFAULT_WISP,
+                wispurl: storageGetItem("proxServer") ?? DEFAULT_WISP,
                 servers: getAllWispServers(),
-                autoswitch: localStorage.getItem('wispAutoswitch') !== 'false'
+                autoswitch: storageGetItem('wispAutoswitch') !== 'false'
             };
 
             const sendConfig = () => {
@@ -504,7 +652,12 @@ document.addEventListener('DOMContentLoaded', async function () {
             setTimeout(sendConfig, 1000); // Failsafe SW ping
         }
         await initializeBrowser();
+        bootFinished = true;
+        clearTimeout(bootWatchdog);
     } catch (err) {
+        bootFinished = true;
+        clearTimeout(bootWatchdog);
         console.error("Initialization error:", err);
+        initializeFallbackBrowser(err?.message || "");
     }
 });

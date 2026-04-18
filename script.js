@@ -194,6 +194,7 @@ let BareMux = window.BareMux ?? null;
 let sharedScramjet = null;
 let sharedConnection = null;
 let sharedConnectionReady = false;
+let scramjetInitAttempts = 0;
 let tabs = [];
 let activeTabId = null;
 let nextTabId = 1;
@@ -231,13 +232,18 @@ async function getSharedScramjet() {
     try {
         await sharedScramjet.init();
     } catch (err) {
-        console.warn('Scramjet cache corrupted. Auto-nuking IndexedDB...', err);
-        try {
-            ['scramjet-data', 'scrambase', 'ScramjetData'].forEach(db => indexedDB.deleteDatabase(db));
-        } catch (e) {}
-        sharedScramjet = null;
-        return getSharedScramjet(); // Retry after nuke
+        scramjetInitAttempts += 1;
+        if (scramjetInitAttempts <= 1) {
+            console.warn('Scramjet cache corrupted. Auto-nuking IndexedDB...', err);
+            try {
+                ['scramjet-data', 'scrambase', 'ScramjetData'].forEach(db => indexedDB.deleteDatabase(db));
+            } catch (e) {}
+            sharedScramjet = null;
+            return getSharedScramjet(); // One retry after cache nuke
+        }
+        throw new Error("Failed to initialize Scramjet after retry.");
     }
+    scramjetInitAttempts = 0;
     return sharedScramjet;
 }
 
@@ -615,6 +621,26 @@ function toggleDevTools() {
     win.document.body.appendChild(script);
 }
 
+function withTimeout(taskPromise, ms, label) {
+    return Promise.race([
+        taskPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms.`)), ms))
+    ]);
+}
+
+function renderFatalError(message) {
+    const root = document.getElementById("app");
+    if (!root) return;
+    root.innerHTML = `
+        <div class="message-container" style="display:flex;">
+            <div class="message-content">
+                <h1><i class="fa-solid fa-triangle-exclamation"></i> Startup Failed</h1>
+                <p>${message}</p>
+                <button onclick="location.reload()" style="margin-top:12px;padding:8px 14px;cursor:pointer;">Reload</button>
+            </div>
+        </div>`;
+}
+
 // =====================================================
 // MASTER BOOT SEQUENCE
 // =====================================================
@@ -627,13 +653,17 @@ document.addEventListener('DOMContentLoaded', async function () {
     }, BOOT_TIMEOUT_MS);
 
     try {
-        await initializeWithBestServer();
-        await getSharedScramjet();
-        await getSharedConnection();
+        await withTimeout(initializeWithBestServer(), 5000, "Server check");
+        await withTimeout(getSharedScramjet(), 10000, "Scramjet initialization");
+        await withTimeout(getSharedConnection(), 10000, "Proxy connection initialization");
 
         if ('serviceWorker' in navigator) {
-            const reg = await navigator.serviceWorker.register(getBasePath() + 'sw.js', { scope: getBasePath() });
-            await navigator.serviceWorker.ready;
+            const reg = await withTimeout(
+                navigator.serviceWorker.register(getBasePath() + 'sw.js', { scope: getBasePath() }),
+                8000,
+                "Service worker registration"
+            );
+            await withTimeout(navigator.serviceWorker.ready, 8000, "Service worker ready");
             
             const swConfig = {
                 type: "config",

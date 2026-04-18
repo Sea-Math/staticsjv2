@@ -5,24 +5,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Browser</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/gh/Destroyed12121/Staticsj@main/JS/scramjet.all.js" defer></script>
+    <link rel="stylesheet" href="style.css">
     <script type="module">
-        import * as BareMux from "https://cdn.jsdelivr.net/npm/@mercuryworkshop/bare-mux/dist/index.mjs";
+        import * as BareMux from './vendor/bare-mux/index.mjs';
         window.BareMux = BareMux;
     </script>
-    <link rel="stylesheet" href="style.css">
     <script src="./script.js" defer></script>
-    <style>
-
-    </style>
 </head>
 
 <body>
-    <!-- Home Button -->
-
-
-    <div id="app"></div>
+    <div id="app">
+        <div class="message-container" style="display:flex; position:fixed; inset:0;">
+            <div class="message-content">
+                <svg width="120" height="24" viewBox="0 0 120 24" aria-hidden="true" style="display:block;margin:0 auto 20px;">
+                    <line x1="6" y1="12" x2="114" y2="12" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+                        <animate attributeName="stroke-dasharray" values="0,120;60,60;120,0" dur="1.4s" repeatCount="indefinite" />
+                    </line>
+                </svg>
+                <h1>Starting browser...</h1>
+                <p>Loading scripts from this repo. If blocked, fallback mode will open automatically.</p>
+            </div>
+        </div>
+    </div>
 
     <div class="wisp-settings-modal hidden" id="wisp-settings-modal">
         <div class="settings-card">

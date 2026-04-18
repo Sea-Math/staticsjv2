@@ -565,8 +565,16 @@ document.addEventListener('DOMContentLoaded', async function () {
         clearTimeout(startupWatchdog);
     } catch (err) {
         console.error("Initialization error:", err);
-        startupFinished = true;
-        clearTimeout(startupWatchdog);
-        renderFatalError("Your network/account policy blocked a required startup dependency. Try another network or proxy server.");
+        const root = document.getElementById("app");
+        if (root) {
+            root.innerHTML = `
+                <div class="message-container" style="display:flex;">
+                    <div class="message-content">
+                        <h1><i class="fa-solid fa-triangle-exclamation"></i> Initialization Failed</h1>
+                        <p>Your network or account policy may be blocking required browser storage or scripts.</p>
+                        <button onclick="location.reload()" style="margin-top:12px;padding:8px 14px;cursor:pointer;">Reload</button>
+                    </div>
+                </div>`;
+        }
     }
 });

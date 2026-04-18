@@ -207,6 +207,7 @@ const getBasePath = () => {
 const getStoredWisps = () => { try { return JSON.parse(storageGetItem('customWisps') ?? '[]'); } catch { return []; } };
 const getActiveTab = () => tabs.find(t => t.id === activeTabId);
 const notify = (type, title, message) => { if (typeof Notify !== 'undefined') Notify[type](title, message); };
+const isNewTabUrl = (url = "") => url.includes("NT.html");
 
 // =====================================================
 // INITIALIZATION (With Auto-Nuke for Corruption)
@@ -380,7 +381,7 @@ function createTab(makeActive = true) {
         // Kill Switch: If it takes longer than 15 seconds, assume proxy failure.
         clearTimeout(tab.timeoutTracker);
         tab.timeoutTracker = setTimeout(() => {
-            if (tab.loading && tab.id === activeTabId && tab.url && !tab.url.includes('NT.html')) {
+            if (tab.loading && tab.id === activeTabId && tab.url && !isNewTabUrl(tab.url)) {
                 showIframeLoading(false);
                 document.getElementById("error").style.display = "flex";
                 document.getElementById("error-message").textContent = "Connection Timed Out. The server took too long to respond.";
@@ -400,7 +401,7 @@ function createTab(makeActive = true) {
         let isBlank = false;
         try {
             const frameDoc = frame.frame.contentDocument || frame.frame.contentWindow.document;
-            if (frameDoc && frameDoc.body && frameDoc.body.innerHTML.trim() === "" && tab.url && !tab.url.includes('NT.html')) {
+            if (frameDoc && frameDoc.body && frameDoc.body.innerHTML.trim() === "" && tab.url && !isNewTabUrl(tab.url)) {
                 isBlank = true;
             }
         } catch (e) {
@@ -418,7 +419,7 @@ function createTab(makeActive = true) {
 
         try { const title = frame.frame.contentWindow.document.title; if (title) tab.title = title; } catch {}
 
-        if (frame.frame.contentWindow.location.href.includes('NT.html')) {
+        if (isNewTabUrl(frame.frame.contentWindow.location.href)) {
             tab.title = "New Tab"; tab.url = ""; tab.favicon = null;
         }
 
@@ -493,7 +494,7 @@ function updateTabsUI() {
 function updateAddressBar() {
     const bar = document.getElementById("address-bar");
     const tab = getActiveTab();
-    if (bar && tab) bar.value = (tab.url && !tab.url.includes("NT.html")) ? tab.url : "";
+    if (bar && tab) bar.value = (tab.url && !isNewTabUrl(tab.url)) ? tab.url : "";
 }
 
 async function handleSubmit(url) {

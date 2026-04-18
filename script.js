@@ -4,8 +4,25 @@
 const DEFAULT_WISP = window.SITE_CONFIG?.defaultWisp ?? "wss://military.marincareers.org/wisp/";
 const WISP_SERVERS = [{ name: "Default Wisp", url: "wss://military.marincareers.org/wisp/" }];
 
-if (!localStorage.getItem("proxServer")) {
-    localStorage.setItem("proxServer", DEFAULT_WISP);
+const memoryStorage = {};
+function storageGetItem(key) {
+    try {
+        const value = localStorage.getItem(key);
+        return value ?? memoryStorage[key] ?? null;
+    } catch {
+        return memoryStorage[key] ?? null;
+    }
+}
+
+function storageSetItem(key, value) {
+    memoryStorage[key] = value;
+    try {
+        localStorage.setItem(key, value);
+    } catch {}
+}
+
+if (!storageGetItem("proxServer")) {
+    storageSetItem("proxServer", DEFAULT_WISP);
 }
 
 function getAllWispServers() {
@@ -39,18 +56,18 @@ async function findBestWispServer(servers, currentUrl) {
 }
 
 async function initializeWithBestServer() {
-    const autoswitch = localStorage.getItem('wispAutoswitch') !== 'false';
+    const autoswitch = storageGetItem('wispAutoswitch') !== 'false';
     const allServers = getAllWispServers();
     if (!autoswitch || allServers.length <= 1) return;
 
-    const currentUrl = localStorage.getItem("proxServer") || DEFAULT_WISP;
+    const currentUrl = storageGetItem("proxServer") || DEFAULT_WISP;
     const currentCheck = await pingWispServer(currentUrl, 2000);
     
     if (!currentCheck.success) {
         console.log("Current server dead. Finding best server...");
         const best = await findBestWispServer(allServers, currentUrl);
         if (best && best !== currentUrl) {
-            localStorage.setItem("proxServer", best);
+            storageSetItem("proxServer", best);
             notify('info', 'Auto-switched', 'Switched to a faster proxy server.');
         }
     }
@@ -63,6 +80,7 @@ const BareMux = window.BareMux ?? { BareMuxConnection: class { setTransport() {}
 let sharedScramjet = null;
 let sharedConnection = null;
 let sharedConnectionReady = false;
+let scramjetInitAttempts = 0;
 let tabs = [];
 let activeTabId = null;
 let nextTabId = 1;
@@ -71,7 +89,7 @@ const getBasePath = () => {
     const basePath = location.pathname.replace(/[^/]*$/, '');
     return basePath.endsWith('/') ? basePath : basePath + '/';
 };
-const getStoredWisps = () => { try { return JSON.parse(localStorage.getItem('customWisps') ?? '[]'); } catch { return []; } };
+const getStoredWisps = () => { try { return JSON.parse(storageGetItem('customWisps') ?? '[]'); } catch { return []; } };
 const getActiveTab = () => tabs.find(t => t.id === activeTabId);
 const notify = (type, title, message) => { if (typeof Notify !== 'undefined') Notify[type](title, message); };
 
@@ -80,6 +98,9 @@ const notify = (type, title, message) => { if (typeof Notify !== 'undefined') No
 // =====================================================
 async function getSharedScramjet() {
     if (sharedScramjet) return sharedScramjet;
+    if (typeof $scramjetLoadController !== "function") {
+        throw new Error("Scramjet loader is unavailable.");
+    }
     const { ScramjetController } = $scramjetLoadController();
     
     sharedScramjet = new ScramjetController({
@@ -94,19 +115,24 @@ async function getSharedScramjet() {
     try {
         await sharedScramjet.init();
     } catch (err) {
-        console.warn('Scramjet cache corrupted. Auto-nuking IndexedDB...', err);
-        try {
-            ['scramjet-data', 'scrambase', 'ScramjetData'].forEach(db => indexedDB.deleteDatabase(db));
-        } catch (e) {}
-        sharedScramjet = null;
-        return getSharedScramjet(); // Retry after nuke
+        scramjetInitAttempts += 1;
+        if (scramjetInitAttempts <= 1) {
+            console.warn('Scramjet cache corrupted. Auto-nuking IndexedDB...', err);
+            try {
+                ['scramjet-data', 'scrambase', 'ScramjetData'].forEach(db => indexedDB.deleteDatabase(db));
+            } catch (e) {}
+            sharedScramjet = null;
+            return getSharedScramjet(); // One retry after cache nuke
+        }
+        throw new Error("Failed to initialize Scramjet after retry.");
     }
+    scramjetInitAttempts = 0;
     return sharedScramjet;
 }
 
 async function getSharedConnection() {
     if (sharedConnectionReady) return sharedConnection;
-    const wispUrl = localStorage.getItem("proxServer") ?? DEFAULT_WISP;
+    const wispUrl = storageGetItem("proxServer") ?? DEFAULT_WISP;
     sharedConnection = new BareMux.BareMuxConnection(getBasePath() + "bareworker.js");
     
     await sharedConnection.setTransport(
@@ -391,7 +417,7 @@ function openSettings() {
 function renderServerList() {
     const list = document.getElementById('server-list');
     list.innerHTML = '';
-    const currentUrl = localStorage.getItem('proxServer') ?? DEFAULT_WISP;
+    const currentUrl = storageGetItem('proxServer') ?? DEFAULT_WISP;
     const allWisps = [...WISP_SERVERS, ...getStoredWisps()];
 
     allWisps.forEach((server, index) => {
@@ -412,14 +438,14 @@ function renderServerList() {
         checkServerHealth(server.url, item);
     });
 
-    const isAutoswitch = localStorage.getItem('wispAutoswitch') !== 'false';
+    const isAutoswitch = storageGetItem('wispAutoswitch') !== 'false';
     const toggleContainer = document.createElement('div');
     toggleContainer.className = 'wisp-option';
     toggleContainer.style.cssText = 'margin-top: 10px; cursor: default;';
     toggleContainer.innerHTML = `<div class="wisp-option-header" style="justify-content: space-between;"><div class="wisp-option-name"><i class="fa-solid fa-rotate" style="margin-right:8px"></i> Auto-switch on failure</div><div class="toggle-switch ${isAutoswitch ? 'active' : ''}" id="autoswitch-toggle"><div class="toggle-knob"></div></div></div>`;
     toggleContainer.onclick = () => {
         const newState = !isAutoswitch;
-        localStorage.setItem('wispAutoswitch', newState);
+        storageSetItem('wispAutoswitch', String(newState));
         document.getElementById('autoswitch-toggle').classList.toggle('active', newState);
         navigator.serviceWorker.controller?.postMessage({ type: 'config', autoswitch: newState });
     };
@@ -436,15 +462,15 @@ function saveCustomWisp() {
     if (customWisps.some(w => w.url === url) || WISP_SERVERS.some(w => w.url === url)) return notify('warning', 'Already Exists', 'Server already exists.');
     
     customWisps.push({ name: `Custom ${customWisps.length + 1}`, url });
-    localStorage.setItem('customWisps', JSON.stringify(customWisps));
+    storageSetItem('customWisps', JSON.stringify(customWisps));
     setWisp(url);
     input.value = '';
 }
 
 window.deleteCustomWisp = function (urlToDelete) {
     if (!confirm("Remove this server?")) return;
-    localStorage.setItem('customWisps', JSON.stringify(getStoredWisps().filter(w => w.url !== urlToDelete)));
-    if (localStorage.getItem('proxServer') === urlToDelete) setWisp(DEFAULT_WISP); else renderServerList();
+    storageSetItem('customWisps', JSON.stringify(getStoredWisps().filter(w => w.url !== urlToDelete)));
+    if (storageGetItem('proxServer') === urlToDelete) setWisp(DEFAULT_WISP); else renderServerList();
 };
 
 async function checkServerHealth(url, element) {
@@ -461,7 +487,7 @@ async function checkServerHealth(url, element) {
 }
 
 function setWisp(url) {
-    localStorage.setItem('proxServer', url);
+    storageSetItem('proxServer', url);
     navigator.serviceWorker.controller?.postMessage({ type: 'config', wispurl: url });
     setTimeout(() => location.reload(), 600);
 }
@@ -476,24 +502,55 @@ function toggleDevTools() {
     win.document.body.appendChild(script);
 }
 
+function withTimeout(taskPromise, ms, label) {
+    return Promise.race([
+        taskPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms.`)), ms))
+    ]);
+}
+
+function renderFatalError(message) {
+    const root = document.getElementById("app");
+    if (!root) return;
+    root.innerHTML = `
+        <div class="message-container" style="display:flex;">
+            <div class="message-content">
+                <h1><i class="fa-solid fa-triangle-exclamation"></i> Startup Failed</h1>
+                <p>${message}</p>
+                <button onclick="location.reload()" style="margin-top:12px;padding:8px 14px;cursor:pointer;">Reload</button>
+            </div>
+        </div>`;
+}
+
 // =====================================================
 // MASTER BOOT SEQUENCE
 // =====================================================
 document.addEventListener('DOMContentLoaded', async function () {
+    let startupFinished = false;
+    const startupWatchdog = setTimeout(() => {
+        if (!startupFinished) {
+            renderFatalError("Startup timed out. Network filters may be blocking required proxy files.");
+        }
+    }, 15000);
+
     try {
-        await initializeWithBestServer();
-        await getSharedScramjet();
-        await getSharedConnection();
+        await withTimeout(initializeWithBestServer(), 5000, "Server check");
+        await withTimeout(getSharedScramjet(), 10000, "Scramjet initialization");
+        await withTimeout(getSharedConnection(), 10000, "Proxy connection initialization");
 
         if ('serviceWorker' in navigator) {
-            const reg = await navigator.serviceWorker.register(getBasePath() + 'sw.js', { scope: getBasePath() });
-            await navigator.serviceWorker.ready;
+            const reg = await withTimeout(
+                navigator.serviceWorker.register(getBasePath() + 'sw.js', { scope: getBasePath() }),
+                8000,
+                "Service worker registration"
+            );
+            await withTimeout(navigator.serviceWorker.ready, 8000, "Service worker ready");
             
             const swConfig = {
                 type: "config",
-                wispurl: localStorage.getItem("proxServer") ?? DEFAULT_WISP,
+                wispurl: storageGetItem("proxServer") ?? DEFAULT_WISP,
                 servers: getAllWispServers(),
-                autoswitch: localStorage.getItem('wispAutoswitch') !== 'false'
+                autoswitch: storageGetItem('wispAutoswitch') !== 'false'
             };
 
             const sendConfig = () => {
@@ -504,7 +561,12 @@ document.addEventListener('DOMContentLoaded', async function () {
             setTimeout(sendConfig, 1000); // Failsafe SW ping
         }
         await initializeBrowser();
+        startupFinished = true;
+        clearTimeout(startupWatchdog);
     } catch (err) {
         console.error("Initialization error:", err);
+        startupFinished = true;
+        clearTimeout(startupWatchdog);
+        renderFatalError("Your network/account policy blocked a required startup dependency. Try another network or proxy server.");
     }
 });

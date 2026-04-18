@@ -9,6 +9,7 @@ const SCRAMJET_SCRIPT_URLS = [
     "https://fastly.jsdelivr.net/gh/Destroyed12121/Staticsj@main/JS/scramjet.all.js"
 ];
 const BARE_MUX_IMPORT_URLS = [
+    "./vendor/bare-mux/index.mjs",
     "https://cdn.jsdelivr.net/npm/@mercuryworkshop/bare-mux/dist/index.mjs",
     "https://unpkg.com/@mercuryworkshop/bare-mux/dist/index.mjs",
     "https://esm.sh/@mercuryworkshop/bare-mux"
